@@ -1,0 +1,11 @@
+[package]
+name = "syn_query"
+version = "0.1.0"
+authors = ["hjiayz <hjiayz@hotmail.com>"]
+repository = "https://github.com/hjiayz/syn_query"
+description = "implement Trait Syn::Visit"
+license = "GPL-3.0"
+keywords = ["syn","visit"]
+[dependencies]
+syn={version="*",features = ["full","visit","extra-traits"] }
+proc-macro2="*"
