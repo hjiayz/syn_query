@@ -153,7 +153,9 @@ macro_rules! build_visit {
                     self.path.push(0);
                     $fn_name(self, i);
                     self.path.pop();
-                    self.path.last_mut().into_iter().for_each(|x| *x += 1);
+                    if let Some(last) = self.path.last_mut() {
+                        *last+=1
+                    }
                 }
             )*
         }

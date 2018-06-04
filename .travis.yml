@@ -20,11 +20,6 @@ matrix:
       script:
         - cargo test --all-features --release
     - rust: nightly
-      env: ROLE=codegen
-      script:
-        - (cd codegen && cargo run)
-        - git diff --exit-code
-    - rust: nightly
       env: ROLE=minimal
       script:
         - cargo update -Z minimal-versions

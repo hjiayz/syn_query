@@ -7,5 +7,5 @@ description = "implement Trait Syn::Visit"
 license = "GPL-3.0"
 keywords = ["syn","visit"]
 [dependencies]
-syn={version="*",features = ["full","visit","extra-traits"] }
-proc-macro2="*"
+syn={version="0.14.2",features = ["full","visit","extra-traits"] }
+proc-macro2="0.4.4"
