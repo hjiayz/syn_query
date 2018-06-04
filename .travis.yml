@@ -46,4 +46,4 @@ env:
   matrix:
     - ROLE=build
   global:
-- RUST_MIN_STACK=20000000
+    - RUST_MIN_STACK=20000000
