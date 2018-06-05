@@ -4,21 +4,27 @@
 //! extern crate proc_macro2;
 //! extern crate syn;
 //! extern crate syn_query;
-//! use syn::{Ident,ExprStruct,FieldValue};
+//! use syn_query::Queryable;
 //! use proc_macro2::Span;
+//! use syn::{ExprStruct, FieldValue, Ident};
 //! fn main() {
-//!     let s="Point { x: 1, y: 1 }";
-//!     let st:ExprStruct=syn::parse_str(s).unwrap();
-//!     let qr = syn_query::query::<Ident,_>(st.clone());
-//!     assert_eq!(qr[0].data, Ident::new("Point",Span::call_site()));
-//!     assert_eq!(qr[0].path, vec![0i64,0i64,0i64]);
-//!     assert_eq!(qr[1].data, Ident::new("x",Span::call_site()));
-//!     assert_eq!(qr[1].path, vec![2i64,0i64,0i64]);
-//!     assert_eq!(qr[2].data, Ident::new("y",Span::call_site()));
-//!     assert_eq!(qr[2].path, vec![3i64,0i64,0i64]);
-//!     let qr = syn_query::query::<FieldValue,_>(st.clone()).filter(|x| x.path[0] == 3).query::<Ident>();
-//!     assert_eq!(qr[0].data, Ident::new("y",Span::call_site()));
-//!     assert_eq!(qr[0].path, vec![3i64,0i64,0i64]);
+//!     let s = "Point { x: 1, y: 1 }";
+//!     let st: ExprStruct = syn::parse_str(s).unwrap();
+//!     let qr = st.query::<Ident>();
+//!     assert_eq!(qr[0].data, Ident::new("Point", Span::call_site()));
+//!     assert_eq!(qr[0].path, vec![0i64, 0i64, 0i64]);
+//!     assert_eq!(qr[1].data, Ident::new("x", Span::call_site()));
+//!     assert_eq!(qr[1].path, vec![2i64, 0i64, 0i64]);
+//!     assert_eq!(qr[2].data, Ident::new("y", Span::call_site()));
+//!     assert_eq!(qr[2].path, vec![3i64, 0i64, 0i64]);
+//!     let qr = st.query::<FieldValue>()
+//!         .filter(|x| x.path[0] == 3)
+//!         .query::<Ident>();
+//!     assert_eq!(qr[0].data, Ident::new("y", Span::call_site()));
+//!     assert_eq!(qr[0].path, vec![3i64, 0i64, 0i64]);
+//!     let qr = st.query_childs::<syn::Path>().query_childs::<syn::PathSegment>().query_childs::<Ident>();
+//!     assert_eq!(qr[0].data, Ident::new("Point", Span::call_site()));
+//!     assert_eq!(qr[0].path, vec![0i64, 0i64, 0i64]);
 //! }
 //! ```
 
@@ -30,6 +36,7 @@ use std::cmp::Ordering;
 use std::ops::Index as OpsIndex;
 use syn::visit::*;
 use syn::*;
+
 #[derive(Debug, Clone)]
 pub struct Node<T> {
     pub data: T,
@@ -61,13 +68,15 @@ struct Query<T> {
     base: Vec<i64>,
     path: Vec<i64>,
     results: Vec<Node<T>>,
+    deep: Option<usize>
 }
-impl<T: Queryable + Clone> Query<T> {
-    fn new(base: Vec<i64>) -> Query<T> {
+impl<T: Queryable> Query<T> {
+    fn new(base: Vec<i64>,deep:Option<usize>) -> Query<T> {
         Query {
             base: base,
             path: Vec::new(),
             results: Vec::new(),
+            deep: deep
         }
     }
     fn mk_result(&mut self, i: T) {
@@ -85,19 +94,29 @@ impl<T: Queryable + Clone> Query<T> {
 #[derive(Debug)]
 pub struct QueryResult<T>(Vec<Node<T>>);
 
-impl<T: Queryable + Clone> OpsIndex<usize> for QueryResult<T> {
+impl<T: Queryable> OpsIndex<usize> for QueryResult<T> {
     type Output = Node<T>;
     fn index(&self, id: usize) -> &Node<T> {
         &(self.0[id])
     }
 }
 
-impl<T: Queryable + Clone> QueryResult<T> {
-    pub fn query<U: Queryable + Clone>(&self) -> QueryResult<U> {
+impl<T: Queryable> QueryResult<T> {
+    pub fn query<U: Queryable>(&self) -> QueryResult<U> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
         for i in self.0.iter() {
-            for j in i.data.visit(i.path.to_owned()).0 {
+            for j in i.data.visit(i.path.to_owned(),None).0 {
+                result.insert(j);
+            }
+        }
+        QueryResult::new(result.into_iter().collect())
+    }
+    pub fn query_childs<U: Queryable>(&self) -> QueryResult<U> {
+        use std::collections::BTreeSet;
+        let mut result = BTreeSet::new();
+        for i in self.0.iter() {
+            for j in i.data.visit(i.path.to_owned(),Some(1)).0 {
                 result.insert(j);
             }
         }
@@ -126,8 +145,14 @@ impl<T: Queryable + Clone> QueryResult<T> {
     }
 }
 
-pub trait Queryable: Sized + 'static {
-    fn visit<U: Queryable + Clone>(&self, base: Vec<i64>) -> QueryResult<U>;
+pub trait Queryable: Sized + 'static + Clone {
+    fn visit<U: Queryable >(&self, base: Vec<i64>,deep:Option<usize>) -> QueryResult<U>;
+    fn query<U: Queryable >(&self) ->QueryResult<U>{
+        query::<_,_>(self.to_owned())
+    }
+    fn query_childs<U: Queryable >(&self) ->QueryResult<U>{
+        query_childs::<_,_>(self.to_owned())
+    }
 }
 
 macro_rules! build_visit {
@@ -135,8 +160,8 @@ macro_rules! build_visit {
 
         $(
             impl Queryable for $struct_name {
-                fn visit<U: Queryable + Clone >(&self, base: Vec<i64>) -> QueryResult<U> {
-                    let mut query = Query::new(base);
+                fn visit<U: Queryable >(&self, base: Vec<i64>,deep:Option<usize>) -> QueryResult<U> {
+                    let mut query = Query::new(base,deep);
                     query. $fn_name (self);
                     QueryResult::new(query.results)
                 }
@@ -150,9 +175,11 @@ macro_rules! build_visit {
                     if let Some(result) = val.downcast_ref::<T>() {
                         self.mk_result(result.to_owned());
                     }
+                    if self.deep.is_none()||self.path.len()<self.deep.unwrap() {
                     self.path.push(0);
                     $fn_name(self, i);
                     self.path.pop();
+                    }
                     if let Some(last) = self.path.last_mut() {
                         *last+=1
                     }
@@ -357,6 +384,9 @@ build_visit!(
     WherePredicate: visit_where_predicate
 );
 
-pub fn query<T: Queryable + Clone, U: Queryable + Clone>(i: U) -> QueryResult<T> {
-    i.visit(Vec::new())
+pub fn query<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
+    i.visit(Vec::new(),None)
+}
+pub fn query_childs<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
+    i.visit(Vec::new(),Some(1))
 }
