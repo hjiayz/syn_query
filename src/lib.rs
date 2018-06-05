@@ -68,15 +68,15 @@ struct Query<T> {
     base: Vec<i64>,
     path: Vec<i64>,
     results: Vec<Node<T>>,
-    deep: Option<usize>
+    deep: Option<usize>,
 }
 impl<T: Queryable> Query<T> {
-    fn new(base: Vec<i64>,deep:Option<usize>) -> Query<T> {
+    fn new(base: Vec<i64>, deep: Option<usize>) -> Query<T> {
         Query {
             base: base,
             path: Vec::new(),
             results: Vec::new(),
-            deep: deep
+            deep: deep,
         }
     }
     fn mk_result(&mut self, i: T) {
@@ -106,7 +106,7 @@ impl<T: Queryable> QueryResult<T> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
         for i in self.0.iter() {
-            for j in i.data.visit(i.path.to_owned(),None).0 {
+            for j in i.data.visit(i.path.to_owned(), None).0 {
                 result.insert(j);
             }
         }
@@ -116,7 +116,7 @@ impl<T: Queryable> QueryResult<T> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
         for i in self.0.iter() {
-            for j in i.data.visit(i.path.to_owned(),Some(1)).0 {
+            for j in i.data.visit(i.path.to_owned(), Some(1)).0 {
                 result.insert(j);
             }
         }
@@ -146,12 +146,12 @@ impl<T: Queryable> QueryResult<T> {
 }
 
 pub trait Queryable: Sized + 'static + Clone {
-    fn visit<U: Queryable >(&self, base: Vec<i64>,deep:Option<usize>) -> QueryResult<U>;
-    fn query<U: Queryable >(&self) ->QueryResult<U>{
-        query::<_,_>(self.to_owned())
+    fn visit<U: Queryable>(&self, base: Vec<i64>, deep: Option<usize>) -> QueryResult<U>;
+    fn query<U: Queryable>(&self) -> QueryResult<U> {
+        query::<_, _>(self.to_owned())
     }
-    fn query_childs<U: Queryable >(&self) ->QueryResult<U>{
-        query_childs::<_,_>(self.to_owned())
+    fn query_childs<U: Queryable>(&self) -> QueryResult<U> {
+        query_childs::<_, _>(self.to_owned())
     }
 }
 
@@ -385,8 +385,8 @@ build_visit!(
 );
 
 pub fn query<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
-    i.visit(Vec::new(),None)
+    i.visit(Vec::new(), None)
 }
 pub fn query_childs<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
-    i.visit(Vec::new(),Some(1))
+    i.visit(Vec::new(), Some(1))
 }
