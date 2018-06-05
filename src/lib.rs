@@ -22,7 +22,7 @@
 //!         .query::<Ident>();
 //!     assert_eq!(qr[0].data, Ident::new("y", Span::call_site()));
 //!     assert_eq!(qr[0].path, vec![3i64, 0i64, 0i64]);
-//!     let qr = st.query_childs::<syn::Path>().query_childs::<syn::PathSegment>().query_childs::<Ident>();
+//!     let qr = st.children::<syn::Path>().children::<syn::PathSegment>().children::<Ident>();
 //!     assert_eq!(qr[0].data, Ident::new("Point", Span::call_site()));
 //!     assert_eq!(qr[0].path, vec![0i64, 0i64, 0i64]);
 //! }
@@ -112,7 +112,7 @@ impl<T: Queryable> QueryResult<T> {
         }
         QueryResult::new(result.into_iter().collect())
     }
-    pub fn query_childs<U: Queryable>(&self) -> QueryResult<U> {
+    pub fn children<U: Queryable>(&self) -> QueryResult<U> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
         for i in self.0.iter() {
@@ -150,8 +150,8 @@ pub trait Queryable: Sized + 'static + Clone {
     fn query<U: Queryable>(&self) -> QueryResult<U> {
         query::<_, _>(self.to_owned())
     }
-    fn query_childs<U: Queryable>(&self) -> QueryResult<U> {
-        query_childs::<_, _>(self.to_owned())
+    fn children<U: Queryable>(&self) -> QueryResult<U> {
+        children::<_, _>(self.to_owned())
     }
 }
 
@@ -387,6 +387,6 @@ build_visit!(
 pub fn query<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
     i.visit(Vec::new(), None)
 }
-pub fn query_childs<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
+pub fn children<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
     i.visit(Vec::new(), Some(1))
 }
