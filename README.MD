@@ -1,4 +1,10 @@
  implement Trait Syn::Visit
+ jquery style
+ [![Build Status](https://api.travis-ci.org/hjiayz/syn_query.svg?branch=master)](https://travis-ci.org/hjiayz/syn_query)
+ [![Latest Version](https://img.shields.io/crates/v/syn_query.svg)](https://crates.io/crates/syn)
+ [![Rust Documentation](https://img.shields.io/badge/api-rustdoc-blue.svg)](https://docs.rs/syn_query/0.1.2/)
+ [![Rustc Version 1.15+](https://img.shields.io/badge/rustc-1.15+-lightgray.svg)](https://blog.rust-lang.org/2017/02/02/Rust-1.15.html)
+
  ## Example
  ```rust
  extern crate proc_macro2;
@@ -17,15 +23,5 @@
      assert_eq!(qr[1].path, vec![2i64, 0i64, 0i64]);
      assert_eq!(qr[2].data, Ident::new("y", Span::call_site()));
      assert_eq!(qr[2].path, vec![3i64, 0i64, 0i64]);
-     let qr = st.query::<FieldValue>()
-         .filter(|x| x.path[0] == 3)
-         .query::<Ident>();
-     assert_eq!(qr[0].data, Ident::new("y", Span::call_site()));
-     assert_eq!(qr[0].path, vec![3i64, 0i64, 0i64]);
-     let qr = st.children::<syn::Path>()
-         .children::<syn::PathSegment>()
-         .children::<Ident>();
-     assert_eq!(qr[0].data, Ident::new("Point", Span::call_site()));
-     assert_eq!(qr[0].path, vec![0i64, 0i64, 0i64]);
  }
  ```

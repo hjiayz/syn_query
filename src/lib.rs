@@ -91,66 +91,305 @@ impl<T: Queryable> Query<T> {
     }
 }
 
-#[derive(Debug)]
-pub struct QueryResult<T>(Vec<Node<T>>);
+#[derive(Debug, Clone)]
+pub struct QueryResult<T, R> {
+    nodes: Vec<Node<T>>,
+    root: R,
+}
 
-impl<T: Queryable> OpsIndex<usize> for QueryResult<T> {
+impl<T: Queryable, R: Queryable> OpsIndex<usize> for QueryResult<T, R> {
     type Output = Node<T>;
     fn index(&self, id: usize) -> &Node<T> {
-        &(self.0[id])
+        &(self.nodes[id])
     }
 }
 
-impl<T: Queryable> QueryResult<T> {
-    pub fn query<U: Queryable>(&self) -> QueryResult<U> {
+impl<T: Queryable, R: Queryable> QueryResult<T, R> {
+    pub fn query<U: Queryable>(&self) -> QueryResult<U, R> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
-        for i in self.0.iter() {
-            for j in i.data.visit(i.path.to_owned(), None).0 {
+        for i in self.iter() {
+            for j in i.data.visit(i.path.to_owned(), None) {
                 result.insert(j);
             }
         }
-        QueryResult::new(result.into_iter().collect())
+        QueryResult::new(result.into_iter().collect(), self.root.to_owned())
     }
-    pub fn children<U: Queryable>(&self) -> QueryResult<U> {
+    pub fn find<U: Queryable>(&self) -> QueryResult<U, R> {
+        self.query()
+    }
+    pub fn children<U: Queryable>(&self) -> QueryResult<U, R> {
         use std::collections::BTreeSet;
         let mut result = BTreeSet::new();
-        for i in self.0.iter() {
-            for j in i.data.visit(i.path.to_owned(), Some(1)).0 {
+        for i in self.iter() {
+            for j in i.data.visit(i.path.to_owned(), Some(1)) {
                 result.insert(j);
             }
         }
-        QueryResult::new(result.into_iter().collect())
+        QueryResult::new(result.into_iter().collect(), self.root.to_owned())
     }
-    pub fn new(result: Vec<Node<T>>) -> QueryResult<T> {
-        QueryResult(result)
+    pub fn new(result: Vec<Node<T>>, root: R) -> QueryResult<T, R> {
+        QueryResult {
+            nodes: result,
+            root: root,
+        }
     }
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.nodes.len()
     }
     pub fn iter(&self) -> std::slice::Iter<Node<T>> {
-        self.0.iter()
+        self.nodes.iter()
     }
     pub fn iter_mut(&mut self) -> std::slice::IterMut<Node<T>> {
-        self.0.iter_mut()
+        self.nodes.iter_mut()
     }
-    pub fn into_iter(&self) -> std::vec::IntoIter<Node<T>> {
-        self.0.to_owned().into_iter()
-    }
-    pub fn filter<P>(&self, predicate: P) -> QueryResult<T>
+    pub fn filter<P>(&self, predicate: P) -> QueryResult<T, R>
     where
         for<'r> P: FnMut(&'r Node<T>) -> bool,
     {
-        QueryResult::new(self.into_iter().filter(predicate).collect())
+        QueryResult::new(
+            self.to_owned().into_iter().filter(predicate).collect(),
+            self.root.to_owned(),
+        )
+    }
+    pub fn parents<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::BTreeSet;
+        let mut path_list = BTreeSet::new();
+        for item in self.iter() {
+            let mut path = Vec::new();
+            for path_node in item.path.iter() {
+                path_list.insert(path.to_owned());
+                path.push(path_node.to_owned());
+            }
+        }
+        self.root
+            .query()
+            .filter(|node| path_list.contains(&node.path))
+    }
+    pub fn parent<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::BTreeSet;
+        let mut path_list = BTreeSet::new();
+        for item in self.iter() {
+            let mut path = item.path.to_owned();
+            if path.pop().is_some() {
+                path_list.insert(path);
+            }
+        }
+        self.root
+            .query()
+            .filter(|node| path_list.contains(&node.path))
+    }
+    pub fn prev<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::BTreeSet;
+        let mut path_list = BTreeSet::new();
+        for item in self.iter() {
+            let mut path = item.path.to_owned();
+            let mut will_insert = false;
+            if let Some(last) = path.last_mut() {
+                if *last > 0 {
+                    *last -= 1;
+                    will_insert = true;
+                }
+            }
+            if will_insert {
+                path_list.insert(path);
+            };
+        }
+        self.root
+            .query()
+            .filter(|node| path_list.contains(&node.path))
+    }
+    pub fn prev_all<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::HashMap;
+        let mut map = HashMap::new();
+        for item in self.iter() {
+            let mut path = item.path.to_owned();
+            if let Some(last) = path.pop() {
+                if map.get(&path).map_or(true, |value| (*value) > last) {
+                    map.insert(path, last);
+                }
+            }
+        }
+        self.root.query().filter(|node| {
+            let mut path = node.path.to_owned();
+            if let Some(last) = path.pop() {
+                let value = map.get(&path);
+                return value.map_or(false, |value| (*value) > last);
+            }
+            false
+        })
+    }
+    pub fn prev_until<U: Queryable, P>(&self, predicate: P) -> QueryResult<U, R>
+    where
+        for<'r> P: FnMut(&'r Node<U>) -> bool,
+    {
+        use std::collections::HashMap;
+        let all: QueryResult<U, R> = self.prev_all();
+        let unitl = all.filter(predicate);
+        let mut map = HashMap::new();
+        for item in unitl {
+            let mut path = item.path;
+            if let Some(last) = path.pop() {
+                if map.get(&path).map_or(true, |value| (*value) > last) {
+                    map.insert(path, last);
+                }
+            }
+        }
+        all.filter(|node| {
+            let mut path = node.path.to_owned();
+            if let Some(last) = path.pop() {
+                return map.get(&path).map_or(true, |value| (*value) < last);
+            }
+            false
+        })
+    }
+    pub fn next<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::BTreeSet;
+        let mut path_list = BTreeSet::new();
+        for item in self.to_owned().into_iter() {
+            let mut path = item.path.to_owned();
+            let mut will_insert = false;
+            if let Some(last) = path.last_mut() {
+                *last += 1;
+                will_insert = true;
+            }
+            if will_insert {
+                path_list.insert(path);
+            };
+        }
+        self.root
+            .query()
+            .filter(|node| path_list.contains(&node.path))
+    }
+    pub fn next_all<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::HashMap;
+        let mut map = HashMap::new();
+        for item in self.iter() {
+            let mut path = item.path.to_owned();
+            if let Some(last) = path.pop() {
+                if map.get(&path).map_or(true, |value| (*value) < last) {
+                    map.insert(path, last);
+                }
+            }
+        }
+        self.root.query().filter(|node| {
+            let mut path = node.path.to_owned();
+            if let Some(last) = path.pop() {
+                let value = map.get(&path);
+                return value.map_or(false, |value| (*value) < last);
+            }
+            false
+        })
+    }
+    pub fn next_until<U: Queryable, P>(&self, predicate: P) -> QueryResult<U, R>
+    where
+        for<'r> P: FnMut(&'r Node<U>) -> bool,
+    {
+        use std::collections::HashMap;
+        let all: QueryResult<U, R> = self.next_all();
+        let unitl = all.filter(predicate);
+        let mut map = HashMap::new();
+        for item in unitl {
+            let mut path = item.path;
+            if let Some(last) = path.pop() {
+                if map.get(&path).map_or(true, |value| (*value) < last) {
+                    map.insert(path, last);
+                }
+            }
+        }
+        all.filter(|node| {
+            let mut path = node.path.to_owned();
+            if let Some(last) = path.pop() {
+                return map.get(&path).map_or(true, |value| (*value) > last);
+            }
+            false
+        })
+    }
+    pub fn siblings<U: Queryable>(&self) -> QueryResult<U, R> {
+        use std::collections::HashMap;
+        let mut map = HashMap::<_, Option<i64>>::new();
+        for node in self.nodes.to_owned().into_iter() {
+            let mut path = node.path;
+            if let Some(last) = path.pop().to_owned() {
+                match map.get(&path).map(|item| *item) {
+                    None => {
+                        map.insert(path, Some(last.to_owned()));
+                    }
+                    Some(item) => {
+                        if item.map_or(false, |item| item != last) {
+                            map.insert(path, None);
+                        }
+                    }
+                }
+            }
+        }
+        self.root.find().filter(|node| {
+            let mut path = node.path.to_owned();
+            if let Some(last) = path.pop() {
+                return map.get(&path)
+                    .map_or(false, |value| value.map_or(true, |value| value != last));
+            }
+            false
+        })
+    }
+    pub fn eq(&self, index: isize) -> Option<Node<T>> {
+        let id = if index >= 0 {
+            index as usize
+        } else {
+            let offset = -index as usize;
+            if offset > self.len() {
+                return None;
+            }
+            self.len() - offset
+        };
+        self.nodes.get(id).map(|node| node.to_owned())
+    }
+    pub fn first(&self) -> Option<Node<T>> {
+        self.nodes.first().map(|node| node.to_owned())
+    }
+    pub fn last(&self) -> Option<Node<T>> {
+        self.nodes.last().map(|node| node.to_owned())
+    }
+    pub fn map<B, F>(&self, f: F) -> Vec<B>
+    where
+        F: FnMut(Node<T>) -> B,
+    {
+        self.nodes.to_owned().into_iter().map(f).collect()
+    }
+    pub fn is<F>(&self, f: F) -> bool
+    where
+        for<'r> F: FnMut(&'r Node<T>) -> bool,
+    {
+        self.iter().any(f)
+    }
+    pub fn has(&self) -> bool {
+        self.len() > 0
+    }
+    pub fn not<P>(&self, mut predicate: P) -> QueryResult<T, R>
+    where
+        for<'r> P: FnMut(&'r Node<T>) -> bool,
+    {
+        self.filter(|p: &Node<T>| !(predicate(p)))
+    }
+}
+
+impl<T: Queryable, R: Queryable> IntoIterator for QueryResult<T, R> {
+    type Item = Node<T>;
+    type IntoIter = ::std::vec::IntoIter<Node<T>>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.nodes.into_iter()
     }
 }
 
 pub trait Queryable: Sized + 'static + Clone {
-    fn visit<U: Queryable>(&self, base: Vec<i64>, deep: Option<usize>) -> QueryResult<U>;
-    fn query<U: Queryable>(&self) -> QueryResult<U> {
+    fn visit<U: Queryable>(&self, base: Vec<i64>, deep: Option<usize>) -> Vec<Node<U>>;
+    fn query<U: Queryable>(&self) -> QueryResult<U, Self> {
         query::<_, _>(self.to_owned())
     }
-    fn children<U: Queryable>(&self) -> QueryResult<U> {
+    fn find<U: Queryable>(&self) -> QueryResult<U, Self> {
+        query::<_, _>(self.to_owned())
+    }
+    fn children<U: Queryable>(&self) -> QueryResult<U, Self> {
         children::<_, _>(self.to_owned())
     }
 }
@@ -160,10 +399,10 @@ macro_rules! build_visit {
 
         $(
             impl Queryable for $struct_name {
-                fn visit<U: Queryable >(&self, base: Vec<i64>,deep:Option<usize>) -> QueryResult<U> {
+                fn visit<U: Queryable >(&self, base: Vec<i64>,deep:Option<usize>) -> Vec<Node<U>> {
                     let mut query = Query::new(base,deep);
                     query. $fn_name (self);
-                    QueryResult::new(query.results)
+                    query.results
                 }
             }
         )*
@@ -384,9 +623,14 @@ build_visit!(
     WherePredicate: visit_where_predicate
 );
 
-pub fn query<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
-    i.visit(Vec::new(), None)
+pub fn query<T: Queryable, U: Queryable>(i: U) -> QueryResult<T, U> {
+    QueryResult::new(i.visit(Vec::new(), None), i.to_owned())
 }
-pub fn children<T: Queryable, U: Queryable>(i: U) -> QueryResult<T> {
-    i.visit(Vec::new(), Some(1))
+
+pub fn find<T: Queryable, U: Queryable>(i: U) -> QueryResult<T, U> {
+    query(i)
+}
+
+pub fn children<T: Queryable, U: Queryable>(i: U) -> QueryResult<T, U> {
+    QueryResult::new(i.visit(Vec::new(), Some(1)), i.to_owned())
 }
