@@ -1,7 +1,7 @@
- implement Trait Syn::Visit
- jquery style
+ #####implement Trait Syn::Visit
+ #####jquery style
  [![Build Status](https://api.travis-ci.org/hjiayz/syn_query.svg?branch=master)](https://travis-ci.org/hjiayz/syn_query)
- [![Latest Version](https://img.shields.io/crates/v/syn_query.svg)](https://crates.io/crates/syn)
+ [![Latest Version](https://img.shields.io/crates/v/syn_query.svg)](https://crates.io/crates/syn_query)
  [![Rust Documentation](https://img.shields.io/badge/api-rustdoc-blue.svg)](https://docs.rs/syn_query)
  [![Rustc Version 1.15+](https://img.shields.io/badge/rustc-1.15+-lightgray.svg)](https://blog.rust-lang.org/2017/02/02/Rust-1.15.html)
 
